@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SpamShield — Email & SMS Detection</title>
+  <style>
+    :root { font-family: Inter, system-ui, Arial, sans-serif; color: #172033; background: #f4f7fb; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { max-width: 820px; margin: 56px auto; padding: 24px; }
+    .card { background: white; border: 1px solid #e2e8f0; border-radius: 20px; padding: 28px; box-shadow: 0 12px 40px #182b4910; }
+    h1 { margin: 0 0 8px; font-size: clamp(28px, 5vw, 40px); }
+    .muted { color: #64748b; line-height: 1.6; }
+    label { display: block; font-weight: 650; margin: 18px 0 8px; }
+    select, textarea, input { width: 100%; padding: 13px 14px; border: 1px solid #cbd5e1; border-radius: 10px; font: inherit; background: white; }
+    textarea { min-height: 180px; resize: vertical; }
+    button { margin-top: 16px; background: #2357e7; color: white; border: 0; padding: 13px 18px; border-radius: 10px; font-weight: 700; cursor: pointer; }
+    button:disabled { opacity: .6; cursor: wait; }
+    #result { display: none; margin-top: 20px; padding: 16px; border-radius: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+    .spam { background: #fff1f2; border: 1px solid #fecdd3; }
+    .ham { background: #ecfdf5; border: 1px solid #a7f3d0; }
+    .error { background: #fff7ed; border: 1px solid #fed7aa; }
+    footer { margin-top: 18px; font-size: 13px; color: #64748b; }
+  </style>
+</head>
+<body>
+<main>
+  <section class="card">
+    <h1>SpamShield</h1>
+    <p class="muted">Machine-learning spam detection for email and SMS. Paste a message below to check it.</p>
+    <label for="channel">Message type</label>
+    <select id="channel"><option value="sms">SMS</option><option value="email">Email</option></select>
+    <label for="subject">Email subject (optional)</label>
+    <input id="subject" placeholder="e.g. Urgent: verify your account">
+    <label for="message">Message body</label>
+    <textarea id="message" placeholder="Paste the message text here..." required></textarea>
+    <button id="check">Check message</button>
+    <div id="result" role="status" aria-live="polite"></div>
+    <footer>Demo only: predictions can be wrong. This page does not connect to an inbox or read emails automatically.</footer>
+  </section>
+</main>
+<script>
+  // Set this to your deployed Python API URL, e.g. https://your-api.onrender.com
+  const API_BASE = window.API_BASE || "http://127.0.0.1:5000";
+  const button = document.getElementById("check");
+  const result = document.getElementById("result");
+
+  button.addEventListener("click", async () => {
+    const channel = document.getElementById("channel").value;
+    const subject = document.getElementById("subject").value.trim();
+    const body = document.getElementById("message").value.trim();
+    const message = channel === "email" ? `Subject: ${subject}\n\n${body}` : body;
+    if (!body) {
+      result.className = "error";
+      result.style.display = "block";
+      result.textContent = "Please enter a message first.";
+      return;
+    }
+    button.disabled = true;
+    button.textContent = "Checking…";
+    result.style.display = "none";
+    try {
+      const response = await fetch(`${API_BASE}/api/predict`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({message, channel})
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "API request failed");
+      result.className = data.prediction === "spam" ? "spam" : "ham";
+      result.innerHTML = `<strong>Prediction: ${escapeHtml(data.prediction.toUpperCase())}</strong><br>Model score: ${(data.confidence * 100).toFixed(1)}%<br><span>${escapeHtml(data.warning || "")}</span>`;
+      result.style.display = "block";
+    } catch (error) {
+      result.className = "error";
+      result.textContent = `Could not reach the API: ${error.message}. Start the backend and configure API_BASE.`;
+      result.style.display = "block";
+    } finally {
+      button.disabled = false;
+      button.textContent = "Check message";
+    }
+  });
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  }
+</script>
+</body>
+</html>
